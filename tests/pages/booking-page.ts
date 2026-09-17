@@ -1,4 +1,4 @@
-import { type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // Один класс на весь путь: слоты хоста → каталог → карточка человека →
 // календарь → диалог подтверждения → «Мои встречи».
@@ -118,7 +118,15 @@ export class BookingPage {
 
   async selectFirstSlot() {
     await this.calendarDay.first().click();
-    await this.calendarTime.first().click();
+    // Клик по времени может уйти в DOM до гидратации карточки или в узел,
+    // который React перевешивает после выбора дня, — событие теряется и диалог
+    // не открывается. Поэтому проверяем результат клика и повторяем его,
+    // а не ждём дольше: после потерянного клика диалог не откроется никогда.
+    await expect(async () => {
+      if (await this.confirmDialog.isVisible().catch(() => false)) return;
+      await this.calendarTime.first().click();
+      await expect(this.confirmDialog).toBeVisible({ timeout: 1_500 });
+    }).toPass({ timeout: 15_000 });
   }
 
   async confirmBooking() {
