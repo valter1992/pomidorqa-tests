@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Сводка метрик по JSON-отчёту Playwright.
+// Сводка метрик по JSON-отчётам Playwright.
 //
 //   npx playwright test --reporter=json,html
 //   node scripts/test-metrics.mjs playwright-report/results.json
@@ -13,8 +13,21 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const reportPath = process.argv[2] ?? "playwright-report/results.json";
+const reportPaths = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
 const testsDir = "tests";
+
+function deriveStatus(expectedStatus, results) {
+  if (results.length === 0) return "skipped";
+  const final = results[results.length - 1].status;
+  const hadFailure = results.some((r) => r.status !== "passed" && r.status !== "skipped");
+  if (final === "passed") {
+    if (expectedStatus !== "passed") return "unexpected";
+    return hadFailure ? "flaky" : "passed";
+  }
+  if (final === "skipped") return "skipped";
+  if (expectedStatus === "failed") return "expected";
+  return "unexpected";
+}
 
 function collectSpecs(suite, project, out) {
   const suiteProject = suite.title?.match(/^(unit|api|e2e)$/) ? suite.title : project;
@@ -22,14 +35,24 @@ function collectSpecs(suite, project, out) {
   for (const spec of suite.specs ?? []) {
     for (const test of spec.tests ?? []) {
       const results = test.results ?? [];
+      const reqs = [
+        ...new Set(
+          results.flatMap((r) =>
+            (r.annotations ?? [])
+              .filter((a) => a.type === "req")
+              .map((a) => a.description),
+          ),
+        ),
+      ];
       out.push({
         title: spec.title,
         file: spec.file,
         project: test.projectName || suiteProject || "unknown",
-        status: test.status,
+        status: deriveStatus(test.expectedStatus, results),
         expectedStatus: test.expectedStatus,
         duration: results.reduce((sum, r) => sum + (r.duration ?? 0), 0),
         attempts: results.length,
+        reqs,
       });
     }
   }
@@ -60,14 +83,18 @@ function table(rows) {
     .join("\n");
 }
 
-const report = JSON.parse(readFileSync(reportPath, "utf8"));
 const tests = [];
-for (const suite of report.suites ?? []) {
-  collectSpecs(suite, null, tests);
+let wallClock = 0;
+for (const reportPath of reportPaths) {
+  const report = JSON.parse(readFileSync(reportPath, "utf8"));
+  for (const suite of report.suites ?? []) {
+    collectSpecs(suite, null, tests);
+  }
+  wallClock += report.stats?.duration ?? 0;
 }
 
 if (tests.length === 0) {
-  console.error(`В отчёте ${reportPath} не нашлось тестов`);
+  console.error(`В отчётах ${reportPaths.join(", ")} не нашлось тестов`);
   process.exit(1);
 }
 
@@ -76,7 +103,6 @@ const unexpected = tests.filter((t) => t.status === "unexpected");
 const flaky = tests.filter((t) => t.status === "flaky");
 const skipped = tests.filter((t) => t.status === "skipped");
 const retried = tests.filter((t) => t.attempts > 1);
-const wallClock = report.stats?.duration ?? tests.reduce((sum, t) => sum + t.duration, 0);
 
 const byProject = new Map();
 for (const test of tests) {
@@ -88,12 +114,13 @@ for (const test of tests) {
 
 const specFiles = listSpecFiles(testsDir);
 const e2eFiles = specFiles.filter((file) => file.includes("/e2e/"));
-const withApiArrange = e2eFiles.filter((file) =>
-  readFileSync(file, "utf8").includes("registerUserViaApi")
-);
+const withApiArrange = e2eFiles.filter((file) => {
+  const source = readFileSync(file, "utf8");
+  return source.includes("users.add(") || source.includes("createUserViaApi");
+});
 const withCleanup = e2eFiles.filter((file) => {
   const source = readFileSync(file, "utf8");
-  return source.includes("cleanupUsersViaApi") || source.includes("deleteUserViaApi");
+  return source.includes("users.cleanup(") || source.includes("deleteUserViaApi");
 });
 
 const slowest = [...tests].sort((a, b) => b.duration - a.duration).slice(0, 5);
@@ -121,6 +148,84 @@ console.log(
       .map(([project, bucket]) => [project, bucket.count, formatSeconds(bucket.duration)]),
   ])
 );
+
+const requirements = JSON.parse(readFileSync("docs/requirements.json", "utf8"));
+const PASSED = new Set(["passed", "flaky"]);
+
+const reqToTests = new Map();
+for (const test of tests) {
+  for (const req of test.reqs) {
+    const bucket = reqToTests.get(req) ?? [];
+    bucket.push(test);
+    reqToTests.set(req, bucket);
+  }
+}
+
+const coverageRows = requirements.map((req) => {
+  const covering = reqToTests.get(req.id) ?? [];
+  const green = covering.filter((t) => PASSED.has(t.status));
+  const knownDefect = covering.some(
+    (t) => t.expectedStatus === "failed" && t.status === "expected"
+  );
+  let status;
+  if (req.status === "out_of_scope") status = "out of scope";
+  else if (knownDefect) status = "known defect";
+  else if (green.length > 0) status = req.status === "partial" ? "partial" : "automated";
+  else status = "uncovered";
+  return { req, covering, green, status };
+});
+
+const byStatus = new Map();
+for (const row of coverageRows) {
+  const bucket = byStatus.get(row.status) ?? 0;
+  byStatus.set(row.status, bucket + 1);
+}
+const covered = ["automated", "partial", "known defect"]
+  .map((s) => byStatus.get(s) ?? 0)
+  .reduce((a, b) => a + b, 0);
+
+console.log("\nПокрытие требований\n");
+console.log(
+  table([
+    ["Требований в эталоне", requirements.length],
+    ["Покрыто тестами", `${covered} из ${requirements.length}`],
+    ...[...byStatus.entries()].map(([status, count]) => [status, count]),
+  ])
+);
+
+const coveredByLevel = new Map();
+for (const row of coverageRows) {
+  if (!["automated", "partial", "known defect"].includes(row.status)) continue;
+  const levels = new Set(row.green.map((t) => t.project));
+  for (const level of levels) {
+    const bucket = coveredByLevel.get(level) ?? new Set();
+    bucket.add(row.req.id);
+    coveredByLevel.set(level, bucket);
+  }
+}
+if (coveredByLevel.size > 0) {
+  console.log("\nПокрытые требования по уровням\n");
+  console.log(
+    table(
+      [...coveredByLevel.entries()].map(([level, ids]) => [
+        level,
+        ids.size,
+        [...ids].join(" "),
+      ])
+    )
+  );
+}
+
+const uncovered = coverageRows.filter((r) => r.status === "uncovered");
+if (uncovered.length > 0) {
+  console.log("\nБез тестов\n");
+  console.log(table(uncovered.map((r) => [r.req.id, r.req.title])));
+}
+const oos = coverageRows.filter((r) => r.status === "out of scope");
+if (oos.length > 0) {
+  console.log("\nНедостижимо в black-box\n");
+  console.log(table(oos.map((r) => [r.req.id, r.req.note])));
+}
 
 console.log("\nДисциплина E2E\n");
 console.log(
