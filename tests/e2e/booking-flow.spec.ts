@@ -4,12 +4,6 @@ import { addOpenSlot } from "../helpers/host";
 import { ProfilePage } from "../pages/profile-page";
 import { BookingPage } from "../pages/booking-page";
 
-// Гонка за слот: двое гостей открывают один свободный слот до подтверждения —
-// бронирует первый, второй получает ошибку занятости, встреча видна обоим.
-// Участники заводятся через API: тест проверяет бронирование, а не регистрацию.
-// beforeEach поднимает всех троих и публикует навык и слот хоста, afterEach
-// удаляет аккаунты и закрывает контексты даже при падении теста.
-
 test.describe("Бронирование: основной путь и гонка за слот", () => {
   const users = new UserRegistry();
 
@@ -36,9 +30,6 @@ test.describe("Бронирование: основной путь и гонка
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const slotDate = tomorrow.toISOString().slice(0, 10);
 
-    // Подготовку проверяем здесь же — каждую часть на своей странице:
-    // если навык или слот молча не сохранились, падение укажет
-    // на подготовку, а не на гонку гостей.
     const hostProfile = new ProfilePage(hostSession.page);
     await hostProfile.open();
     await hostProfile.addSkill(skillTag, "can_help");
@@ -90,8 +81,6 @@ test.describe("Бронирование: основной путь и гонка
       await expect(guestBooking.confirmDialog).toBeVisible();
     });
 
-    // Модалку guest2 открываем ДО confirm у guest: пока слот в UI ещё
-    // свободен — оба «человек открыл и отошёл».
     await test.step("Гость2: открывает каталог", async () => {
       await guest2Booking.openCatalog();
     });

@@ -2,11 +2,6 @@ import { test, expect, type Page } from "@playwright/test";
 import { UserRegistry } from "../helpers/user";
 import { ProfilePage } from "../pages/profile-page";
 
-// Профиль: тесты проверяют сохранение полей на сервере, поэтому аккаунт
-// заводится через API, а спека работает только с формой профиля и перезагрузкой.
-// Каждый тест начинает с чистым профилем, afterEach удаляет аккаунт и закрывает
-// контекст даже при падении теста.
-
 test.describe("Профиль: действия с полями", () => {
   const users = new UserRegistry();
 
@@ -52,8 +47,6 @@ test.describe("Профиль: действия с полями", () => {
       { type: "req", description: "R5.3" },
     ],
   }, async () => {
-    // По умолчанию стоит Europe/Moscow — берём заведомо другой,
-    // иначе проверка прошла бы и без всякого выбора.
     const timezone = "Asia/Yekaterinburg";
 
     await test.step("По умолчанию выбран Europe/Moscow", async () => {
@@ -151,9 +144,6 @@ test.describe("Профиль: действия с полями", () => {
     });
 
     await test.step("Ни одного навыка не появилось", async () => {
-      // Поле навыка помечено required — браузер не даёт отправить форму.
-      // Проверяем именно результат: чипов ноль и блока «могу помочь» нет,
-      // а не «клик прошёл и ладно».
       await expect(profilePage.skillChips).toHaveCount(0);
       await expect(profilePage.canHelpSkills).toBeHidden();
     });
@@ -185,7 +175,6 @@ test.describe("Профиль: действия с полями", () => {
     await test.step("Навыки разошлись по своим блокам", async () => {
       await expect(profilePage.skillChips).toHaveCount(2);
       await expect(profilePage.canHelpSkills).toContainText(canHelpTag);
-      // Главная проверка теста: второй навык добавлен, но в «могу помочь» его нет.
       await expect(profilePage.canHelpSkills).not.toContainText(wantToLearnTag);
     });
   });
@@ -210,8 +199,6 @@ test.describe("Профиль: действия с полями", () => {
     });
 
     await test.step("Все три значения пришли с сервера", async () => {
-      // expect.soft не останавливает тест на первой неудаче: если поедут
-      // два поля из трёх, увидим оба сразу, а не по одному за прогон.
       await expect.soft(profilePage.nameInput).toHaveValue(name);
       await expect.soft(profilePage.telegramInput).toHaveValue(telegram);
       await expect.soft(profilePage.bioInput).toHaveValue(bio);
