@@ -160,6 +160,7 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: reports
+          pattern: results-*
 
       - name: Test metrics and coverage summary
         run: |
