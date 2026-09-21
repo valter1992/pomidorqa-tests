@@ -1,16 +1,6 @@
 #!/usr/bin/env node
-// Сводка метрик по JSON-отчётам Playwright.
-//
-//   npx playwright test --reporter=json,html
-//   node scripts/test-metrics.mjs playwright-report/results.json
-//
-// Считает не только pass/fail: распределение по уровням пирамиды, длительность,
-// самые медленные сценарии, повторы и ожидаемые падения (known defects), а также
-// дисциплину набора — сколько E2E готовят данные через API и сколько файлов
-// гарантируют cleanup. Метрики нужны, чтобы отчёт читался как инженерный
-// документ, а не как зелёная галочка.
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const reportPaths = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
@@ -244,6 +234,70 @@ console.log(
 if (unexpected.length > 0) {
   console.log("\nНепредвиденные падения\n");
   console.log(table(unexpected.map((test) => [test.project, test.file, test.title])));
+}
+
+const writeMatrix = process.argv.includes("--write-matrix");
+
+function testRef(t) {
+  const file = t.file.replace(/^.*tests\//, "").replace(/\.spec\.ts$/, "");
+  return `\`${file}\``;
+}
+
+function matrixMarkdown() {
+  const lines = [];
+  lines.push("# Матрица покрытия PomidorQA");
+  lines.push("");
+  lines.push(
+    "Покрытие считается по функциональным требованиям MVP из [`requirements.md`](../requirements.md). " +
+      "Каждый тест несёт номера требований в аннотациях `req`; матрица генерируется из JSON-отчёта " +
+      "реального прогона командой `npm run coverage` и руками не редактируется."
+  );
+  lines.push("");
+  lines.push("| Статус | Требований |");
+  lines.push("|---|---|");
+  for (const [status, count] of byStatus) {
+    lines.push(`| \`${status}\` | ${count} |`);
+  }
+  lines.push(`| **Всего** | **${requirements.length}** |`);
+  lines.push("");
+  let section = null;
+  for (const row of coverageRows) {
+    if (row.req.section !== section) {
+      section = row.req.section;
+      if (lines.length > 0 && lines[lines.length - 1] !== "") lines.push("");
+      lines.push(`## ${section}`);
+      lines.push("");
+      lines.push("| ID | Требование | Статус | Тесты |");
+      lines.push("|---|---|---|---|");
+    }
+    const testList = [...new Set(row.green.map(testRef))].join(", ");
+    const note = row.req.note ? ` — ${row.req.note}` : "";
+    lines.push(
+      `| ${row.req.id} | ${row.req.title} | \`${row.status}\`${note} | ${testList || "—"} |`
+    );
+  }
+  const defects = tests.filter(
+    (t) => t.expectedStatus === "failed" && t.status === "expected" && t.reqs.length > 0
+  );
+  if (defects.length > 0) {
+    lines.push("");
+    lines.push("## Известные дефекты");
+    lines.push("");
+    lines.push(
+      "Тесты написаны по требованию, а не по фактическому поведению, и помечены `test.fail()`: " +
+        "пока дефект жив, ожидаемый результат — падение, и прогон остаётся зелёным."
+    );
+    lines.push("");
+    for (const t of defects) {
+      lines.push(`- **${t.reqs.join(", ")}** — ${testRef(t)}: ${t.title}`);
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
+if (writeMatrix) {
+  writeFileSync("docs/coverage-matrix.md", matrixMarkdown());
+  console.log("\nМатрица записана: docs/coverage-matrix.md");
 }
 
 process.exit(unexpected.length > 0 ? 1 : 0);
