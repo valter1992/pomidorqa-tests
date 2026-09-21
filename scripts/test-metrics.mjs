@@ -173,12 +173,14 @@ for (const row of coverageRows) {
 const covered = ["automated", "partial", "known defect"]
   .map((s) => byStatus.get(s) ?? 0)
   .reduce((a, b) => a + b, 0);
+const coveragePercent = Math.round((covered / requirements.length) * 100);
 
 console.log("\nПокрытие требований\n");
 console.log(
   table([
     ["Требований в эталоне", requirements.length],
     ["Покрыто тестами", `${covered} из ${requirements.length}`],
+    ["Процент покрытия", `${coveragePercent}%`],
     ...[...byStatus.entries()].map(([status, count]) => [status, count]),
   ])
 );
@@ -252,6 +254,8 @@ function matrixMarkdown() {
       "Каждый тест несёт номера требований в аннотациях `req`; матрица генерируется из JSON-отчёта " +
       "реального прогона командой `npm run coverage` и руками не редактируется."
   );
+  lines.push("");
+  lines.push(`**Покрыто ${covered} из ${requirements.length} требований (${coveragePercent}%)**`);
   lines.push("");
   lines.push("| Статус | Требований |");
   lines.push("|---|---|");
