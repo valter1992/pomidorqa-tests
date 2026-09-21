@@ -166,9 +166,6 @@ jobs:
           set -o pipefail
           {
             echo '```'
-            node scripts/test-metrics.mjs \
-              reports/results-unit/playwright-report/results.json \
-              reports/results-api/playwright-report/results.json \
-              reports/results-e2e/playwright-report/results.json
+            node scripts/test-metrics.mjs $(find reports -name 'results.json' | sort)
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
