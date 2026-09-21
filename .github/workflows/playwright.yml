@@ -7,10 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Проверки идут цепочкой fail-fast по уровням пирамиды: статический анализ →
-# unit → api → e2e. Каждая следующая работа стартует через `needs` только после
-# зелёной предыдущей, поэтому заведомо красный прогон не жжёт минуты на самом
-# дорогом уровне — браузерном e2e на живом стенде.
 jobs:
   lint:
     name: Статический анализ (ESLint + tsc)
@@ -36,7 +32,6 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-  # Чистые функции без браузера — Chromium в этой работе не ставим.
   unit:
     name: Unit-тесты
     needs: lint
@@ -61,7 +56,14 @@ jobs:
         env:
           CI: true
 
-  # Мок-сервер поднимается прямо в тестовом процессе — браузер не нужен.
+      - name: Upload JSON report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-unit
+          path: playwright-report/results.json
+          retention-days: 7
+
   api:
     name: API-тесты
     needs: unit
@@ -86,12 +88,19 @@ jobs:
         env:
           CI: true
 
-  # Единственная работа с реальным браузером — только здесь нужны бинарники Chromium.
+      - name: Upload JSON report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-api
+          path: playwright-report/results.json
+          retention-days: 7
+
   e2e:
     name: E2E-тесты
     needs: api
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -112,14 +121,54 @@ jobs:
       - name: Run E2E tests
         run: npm run test:e2e
         env:
-          # Включает CI-режим в playwright.config.ts: retry, один worker и reporter без открытия окна.
           CI: true
 
       - name: Upload Playwright report
-        # Отчёт выкладываем и после успеха, и после падения; пропускаем только отменённый run.
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ github.run_id }}
           path: playwright-report/
           retention-days: 14
+
+      - name: Upload JSON report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-e2e
+          path: playwright-report/results.json
+          retention-days: 7
+
+  coverage:
+    name: Метрики и покрытие требований
+    needs: [lint, unit, api, e2e]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Download reports
+        uses: actions/download-artifact@v7
+        with:
+          path: reports
+
+      - name: Test metrics and coverage summary
+        run: |
+          set -o pipefail
+          {
+            echo '```'
+            node scripts/test-metrics.mjs \
+              reports/results-unit/playwright-report/results.json \
+              reports/results-api/playwright-report/results.json \
+              reports/results-e2e/playwright-report/results.json
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
