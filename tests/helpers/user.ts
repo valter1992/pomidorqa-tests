@@ -1,13 +1,12 @@
 import {
+  expect,
   type Browser,
   type BrowserContext,
   type Page,
 } from "@playwright/test";
 
-// Подготовка идёт через API — служебная ручка /test/accounts заводит и удаляет
-// аккаунт, браузер остаётся только для действий, которые проверяет сам сценарий.
-
 const LOGIN_URL = "/pomidorqa/auth/login";
+const REGISTER_URL = "/pomidorqa/auth/register";
 const ACCOUNTS_URL = "/api/pomidorqa/test/accounts";
 
 export type TestUser = {
@@ -16,9 +15,6 @@ export type TestUser = {
   password: string;
 };
 
-// Участник вместе с его браузерным контекстом. DELETE аккаунта не принимает
-// id: сервер удаляет владельца пришедшей сессионной куки, поэтому удалить
-// аккаунт можно только из того контекста, где прошла регистрация.
 export type ParticipantSession = {
   user: TestUser;
   context: BrowserContext;
@@ -31,25 +27,16 @@ function randomSuffix(): string {
 
 export function makeUser(role: string, runId: number): TestUser {
   return {
-    // Имя с уникальным хвостом: сценарии ищут карточки и встречи по имени
-    // участника, а «host Автотест» на общем стенде не один.
     name: `${role} Автотест ${randomSuffix()}`,
-    // Почте случайный хвост нужен не меньше имени: параллельные воркеры,
-    // стартовавшие в одну миллисекунду, получат одинаковый runId, и стенд
-    // ответит второму 409 email_taken.
     email: `${role}-${runId}-${randomSuffix()}@example.com`,
     password: "testpass123",
   };
 }
 
-// Уникальный тег навыка: выдача каталога фильтруется по нему, совпадение
-// с чужим тегом притащило бы в результаты постороннего хоста.
 export function uniqueTag(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${randomSuffix()}`;
 }
 
-// Локаторы формы входа — локальные: наружу торчит только функция,
-// отдельной страницы входа в проекте нет.
 export async function logIn(page: Page, email: string, password: string) {
   await page.goto(LOGIN_URL);
   await page.getByLabel("Email").fill(email);
@@ -57,9 +44,20 @@ export async function logIn(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "Войти" }).click();
 }
 
-// Регистрация через API: POST оставляет сессионную куку в общем хранилище
-// контекста, поэтому страница, открытая из этого же контекста, уже авторизована —
-// отдельный вход не нужен.
+export async function registerViaUi(page: Page, user: TestUser) {
+  await page.goto(REGISTER_URL);
+  await page.getByLabel("Имя").fill(user.name);
+  await page.getByLabel("Email").fill(user.email);
+  await page.getByLabel("Пароль").fill(user.password);
+  await page.getByRole("button", { name: "Зарегистрироваться" }).click();
+}
+
+export async function logOut(page: Page) {
+  const logoutButton = page.getByRole("button", { name: "Выйти" });
+  await logoutButton.click();
+  await expect(logoutButton).toBeHidden({ timeout: 10_000 });
+}
+
 export async function createUserViaApi(
   context: BrowserContext,
   user: TestUser,
@@ -73,8 +71,6 @@ export async function createUserViaApi(
   return user;
 }
 
-// Удаление каскадное: вместе с аккаунтом уходят его навыки, слоты и брони,
-// так что следующий прогон стартует с чистого состояния.
 export async function deleteUserViaApi(context: BrowserContext): Promise<void> {
   const response = await context.request.delete(ACCOUNTS_URL);
   if (response.status() !== 200) {
@@ -86,42 +82,55 @@ export async function deleteUserViaApi(context: BrowserContext): Promise<void> {
 
 type TrackedParticipant = {
   context: BrowserContext;
+  user: TestUser;
   accountCreated: boolean;
 };
 
-// Все участники, заведённые текущим тестом: спека складывает их сюда по мере
-// создания, а afterEach одним cleanup() разбирает всех — даже если сценарий
-// упал на середине.
 export class UserRegistry {
   private tracked: TrackedParticipant[] = [];
 
-  // Контекст попадает в список до регистрации: если POST упадёт, cleanup всё
-  // равно закроет контекст. Флаг отличает «аккаунт не создан, удалять нечего»
-  // от живого аккаунта — лишний DELETE ответил бы 401 и подменил бы настоящую
-  // причину падения теста.
   async add(browser: Browser, role: string): Promise<ParticipantSession> {
     const context = await browser.newContext();
-    const tracked: TrackedParticipant = { context, accountCreated: false };
+    const user = makeUser(role, Date.now());
+    const tracked: TrackedParticipant = { context, user, accountCreated: false };
     this.tracked.push(tracked);
 
-    const user = await createUserViaApi(context, makeUser(role, Date.now()));
+    await createUserViaApi(context, user);
     tracked.accountCreated = true;
 
-    // Страница остаётся на about:blank — какой адрес открывать, решает спека:
-    // хосту нужен профиль, гостю — каталог.
     const page = await context.newPage();
     return { user, context, page };
   }
 
-  // Список забирается целиком до разбора: что бы ни случилось при удалении,
-  // реестр пустеет и следующий тест не полезет удалять уже чужие аккаунты.
+  async addViaUi(browser: Browser, role: string): Promise<ParticipantSession> {
+    const context = await browser.newContext();
+    const user = makeUser(role, Date.now());
+    const tracked: TrackedParticipant = { context, user, accountCreated: false };
+    this.tracked.push(tracked);
+
+    const page = await context.newPage();
+    await registerViaUi(page, user);
+    await page.waitForURL((url) => !url.pathname.includes("/auth/"), { timeout: 15_000 });
+    tracked.accountCreated = true;
+
+    return { user, context, page };
+  }
+
   async cleanup(): Promise<void> {
     const batch = this.tracked.splice(0);
     const results = await Promise.allSettled(
       batch.map(async (participant) => {
         try {
           if (participant.accountCreated) {
-            await deleteUserViaApi(participant.context);
+            try {
+              await deleteUserViaApi(participant.context);
+            } catch {
+              const page =
+                participant.context.pages()[0] ?? (await participant.context.newPage());
+              await logIn(page, participant.user.email, participant.user.password);
+              await page.waitForURL((url) => !url.pathname.includes("/auth/"));
+              await deleteUserViaApi(participant.context);
+            }
           }
         } finally {
           await participant.context.close();
