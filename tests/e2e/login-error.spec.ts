@@ -23,7 +23,9 @@ test.describe("Вход: неверные данные", () => {
     await users.cleanup();
   });
 
-  test("вход с неверными данными — одинаковая ошибка в обоих случаях, без уточнения причины", async () => {
+  test("вход с неверными данными — одинаковая ошибка в обоих случаях, без уточнения причины", {
+    annotation: [{ type: "req", description: "R4.5" }],
+  }, async () => {
     let wrongPasswordError = "";
     let unknownEmailError = "";
 

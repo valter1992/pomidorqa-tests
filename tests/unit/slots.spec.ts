@@ -59,11 +59,15 @@ test.describe("Unit: отображение времени слота в час�
 });
 
 test.describe("Валидация пароля при регистрации", () => {
-  test("пароль короче 8 символов — невалиден", () => {
+  test("пароль короче 8 символов — невалиден", {
+    annotation: [{ type: "req", description: "R4.2" }],
+  }, () => {
     expect(isPasswordValid("1234567")).toBe(false);
   });
 
-  test("пароль ровно 8 символов — валиден", () => {
+  test("пароль ровно 8 символов — валиден", {
+    annotation: [{ type: "req", description: "R4.2" }],
+  }, () => {
     expect(isPasswordValid("12345678")).toBe(true);
   });
 });

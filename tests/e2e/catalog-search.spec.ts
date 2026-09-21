@@ -49,7 +49,9 @@ test.describe("Каталог: поиск по навыку", () => {
     await users.cleanup();
   });
 
-  test("по навыку находится участник со свободным слотом", async () => {
+  test("по навыку находится участник со свободным слотом", {
+    annotation: [{ type: "req", description: "R8.3" }],
+  }, async () => {
     await test.step("Гость: открывает каталог", async () => {
       await guestBooking.openCatalog();
     });
@@ -78,7 +80,9 @@ test.describe("Каталог: поиск по навыку", () => {
     });
   });
 
-  test("по навыку без совпадений выдача пустая", async () => {
+  test("по навыку без совпадений выдача пустая", {
+    annotation: [{ type: "req", description: "R8.4" }],
+  }, async () => {
     // Хост с живым навыком и слотом существует — тест проверяет именно
     // «по чужому навыку не находит», а не «в каталоге вообще пусто».
     const missingTag = uniqueTag("NoSuchSkill");
@@ -100,7 +104,9 @@ test.describe("Каталог: поиск по навыку", () => {
     });
   });
 
-  test("собственная карточка не видна в каталоге", async () => {
+  test("собственная карточка не видна в каталоге", {
+    annotation: [{ type: "req", description: "R8.2" }],
+  }, async () => {
     await test.step("Гость: открывает каталог", async () => {
       await guestBooking.openCatalog();
     });

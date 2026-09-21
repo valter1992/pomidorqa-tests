@@ -51,7 +51,14 @@ test.describe("Бронирование: основной путь и гонка
     await users.cleanup();
   });
 
-  test("первый гость бронирует слот, второй видит ошибку занятости, встреча видна обоим", async () => {
+  test("первый гость бронирует слот, второй видит ошибку занятости, встреча видна обоим", {
+    annotation: [
+      { type: "req", description: "R3.7" },
+      { type: "req", description: "R3.9" },
+      { type: "req", description: "R10.4" },
+      { type: "req", description: "R12.1" },
+    ],
+  }, async () => {
     await test.step("Гость: открывает каталог", async () => {
       await guestBooking.openCatalog();
     });

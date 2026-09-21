@@ -47,7 +47,14 @@ test.describe("Бронирование: отмена встречи", () => {
     await users.cleanup();
   });
 
-  test("гость отменяет встречу: карточка уходит в прошедшие, отмену видят оба", async () => {
+  test("гость отменяет встречу: карточка уходит в прошедшие, отмену видят оба", {
+    annotation: [
+      { type: "req", description: "R3.8" },
+      { type: "req", description: "R11.1" },
+      { type: "req", description: "R12.2" },
+      { type: "req", description: "R12.3" },
+    ],
+  }, async () => {
     test.setTimeout(120_000);
 
     await test.step("Гость: открывает каталог", async () => {
