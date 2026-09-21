@@ -8,7 +8,11 @@ export default defineConfig({
   // Один CI-worker снижает конкуренцию за пользователей, слоты и бронирования на общем стенде.
   workers: process.env.CI ? 1 : undefined,
   // В CI пишем лог и HTML-artifact, но не пытаемся открыть браузерное окно на headless-runner.
-  reporter: [["list"], ["html", { open: process.env.CI ? "never" : "on-failure" }]],
+  reporter: [
+    ["list"],
+    ["html", { open: process.env.CI ? "never" : "on-failure" }],
+    ["json", { outputFile: "playwright-report/results.json" }],
+  ],
   projects: [
     {
       name: "unit",
