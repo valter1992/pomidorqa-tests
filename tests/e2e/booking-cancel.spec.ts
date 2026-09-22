@@ -1,13 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { UserRegistry, uniqueTag, type TestUser } from "../helpers/user";
-import { addOpenSlot } from "../helpers/host";
-import { ProfilePage } from "../pages/profile-page";
+import { prepareHost } from "../helpers/host";
 import { BookingPage } from "../pages/booking-page";
-
-// Отмена встречи: гость бронирует слот хоста и отменяет — карточка уезжает
-// в «Прошедшие и отменённые» с пометкой «отменено», и это видят оба участника.
-// Участники заводятся через API: тест проверяет отмену, а не регистрацию.
-// afterEach удаляет оба аккаунта и закрывает контексты даже при падении теста.
 
 test.describe("Бронирование: отмена встречи", () => {
   const users = new UserRegistry();
@@ -29,25 +23,21 @@ test.describe("Бронирование: отмена встречи", () => {
     hostBooking = new BookingPage(hostSession.page);
     guestBooking = new BookingPage(guestSession.page);
 
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const slotDate = tomorrow.toISOString().slice(0, 10);
-
-    // Подготовку проверяем здесь же — каждую часть на своей странице:
-    // если навык или слот молча не сохранились, падение укажет
-    // на подготовку, а не на отмену встречи.
-    const hostProfile = new ProfilePage(hostSession.page);
-    await hostProfile.open();
-    await hostProfile.addSkill(skillTag, "can_help");
-    await expect(hostProfile.canHelpSkills).toContainText(skillTag);
-    await addOpenSlot(hostSession.page, slotDate);
-    await expect(hostBooking.slotsCard.first()).toBeVisible();
+    await prepareHost(hostSession.page, skillTag);
   });
 
   test.afterEach(async () => {
     await users.cleanup();
   });
 
-  test("гость отменяет встречу: карточка уходит в прошедшие, отмену видят оба", async () => {
+  test("гость отменяет встречу: карточка уходит в прошедшие, отмену видят оба", {
+    annotation: [
+      { type: "req", description: "R3.8" },
+      { type: "req", description: "R11.1" },
+      { type: "req", description: "R12.2" },
+      { type: "req", description: "R12.3" },
+    ],
+  }, async () => {
     test.setTimeout(120_000);
 
     await test.step("Гость: открывает каталог", async () => {
@@ -133,6 +123,70 @@ test.describe("Бронирование: отмена встречи", () => {
       const hostPastCard = hostBooking.pastCardByName(guest.name);
       await expect(hostPastCard).toBeVisible();
       await expect(hostPastCard).toContainText("отменено");
+    });
+  });
+
+  test("хост отменяет бронь гостя: у гостя встреча уезжает в отменённые", {
+    annotation: [{ type: "req", description: "R11.1" }],
+  }, async () => {
+    test.setTimeout(120_000);
+
+    await test.step("Гость бронирует слот хоста", async () => {
+      await guestBooking.bookFirstSlot(skillTag, host.name);
+    });
+
+    await test.step("Хост открывает свои встречи и отменяет бронь гостя", async () => {
+      await expect(async () => {
+        await hostBooking.openBookingsUntilCardVisible(guest.name);
+      }).toPass({ timeout: 10_000 });
+      await hostBooking.cancelBooking(guest.name);
+    });
+
+    await test.step("У хоста встреча уехала в отменённые", async () => {
+      const hostPastCard = hostBooking.pastCardByName(guest.name);
+      await expect(hostPastCard).toBeVisible({ timeout: 10_000 });
+      await expect(hostPastCard).toContainText("отменено");
+    });
+
+    await test.step("Гость видит отменённую встречу с хостом", async () => {
+      await guestBooking.openBookings();
+      const guestPastCard = guestBooking.pastCardByName(host.name);
+      await expect(guestPastCard).toBeVisible({ timeout: 10_000 });
+      await expect(guestPastCard).toContainText("отменено");
+    });
+  });
+
+  test("после отмены слот снова свободен и бронируется другим гостем", {
+    annotation: [{ type: "req", description: "R11.3" }],
+  }, async ({ browser }) => {
+    test.setTimeout(180_000);
+
+    await test.step("Гость бронирует слот хоста", async () => {
+      await guestBooking.bookFirstSlot(skillTag, host.name);
+    });
+
+    await test.step("Гость отменяет встречу", async () => {
+      await expect(async () => {
+        await guestBooking.openBookingsUntilCardVisible(host.name);
+      }).toPass({ timeout: 10_000 });
+      await guestBooking.cancelBooking(host.name);
+      await expect(guestBooking.pastCardByName(host.name)).toBeVisible({
+        timeout: 10_000,
+      });
+    });
+
+    const guest2Session = await users.add(browser, "guest2");
+    const guest2Booking = new BookingPage(guest2Session.page);
+
+    await test.step("Второй гость бронирует тот же слот", async () => {
+      await guest2Booking.bookFirstSlot(skillTag, host.name);
+    });
+
+    await test.step("У второго гостя встреча в «Ближайших»", async () => {
+      await expect(async () => {
+        await guest2Booking.openBookingsUntilCardVisible(host.name);
+      }).toPass({ timeout: 10_000 });
+      await expect(guest2Booking.bookingCardByName(host.name)).toBeVisible();
     });
   });
 });

@@ -2,11 +2,6 @@ import { test, expect, type Page } from "@playwright/test";
 import { UserRegistry } from "../helpers/user";
 import { ProfilePage } from "../pages/profile-page";
 
-// Профиль: тесты проверяют сохранение полей на сервере, поэтому аккаунт
-// заводится через API, а спека работает только с формой профиля и перезагрузкой.
-// Каждый тест начинает с чистым профилем, afterEach удаляет аккаунт и закрывает
-// контекст даже при падении теста.
-
 test.describe("Профиль: действия с полями", () => {
   const users = new UserRegistry();
 
@@ -24,7 +19,12 @@ test.describe("Профиль: действия с полями", () => {
     await users.cleanup();
   });
 
-  test("имя: вводим новое и сохраняем", async () => {
+  test("имя: вводим новое и сохраняем", {
+    annotation: [
+      { type: "req", description: "R3.5" },
+      { type: "req", description: "R5.1" },
+    ],
+  }, async () => {
     const newName = `Тимур Тестович ${Date.now()}`;
 
     await test.step("Заполняем поле и сохраняем", async () => {
@@ -41,9 +41,12 @@ test.describe("Профиль: действия с полями", () => {
     });
   });
 
-  test("часовой пояс: выбираем из списка", async () => {
-    // По умолчанию стоит Europe/Moscow — берём заведомо другой,
-    // иначе проверка прошла бы и без всякого выбора.
+  test("часовой пояс: выбираем из списка", {
+    annotation: [
+      { type: "req", description: "R3.5" },
+      { type: "req", description: "R5.3" },
+    ],
+  }, async () => {
     const timezone = "Asia/Yekaterinburg";
 
     await test.step("По умолчанию выбран Europe/Moscow", async () => {
@@ -64,7 +67,12 @@ test.describe("Профиль: действия с полями", () => {
     });
   });
 
-  test("telegram: заполняем пустое поле", async () => {
+  test("telegram: заполняем пустое поле", {
+    annotation: [
+      { type: "req", description: "R3.5" },
+      { type: "req", description: "R5.2" },
+    ],
+  }, async () => {
     const telegram = `@qa_timur_cat${Date.now()}`;
 
     await test.step("Поле Telegram пустое", async () => {
@@ -85,7 +93,12 @@ test.describe("Профиль: действия с полями", () => {
     });
   });
 
-  test("о себе: заполняем многострочное поле", async () => {
+  test("о себе: заполняем многострочное поле", {
+    annotation: [
+      { type: "req", description: "R3.5" },
+      { type: "req", description: "R5.4" },
+    ],
+  }, async () => {
     const bio = `QA-инженер, прогон ${Date.now()}. Пытаюсь разобраться в Playwright.`;
 
     await test.step("Заполняем «О себе» и сохраняем", async () => {
@@ -102,7 +115,12 @@ test.describe("Профиль: действия с полями", () => {
     });
   });
 
-  test("навык: заполняем, выбираем тип и добавляем", async () => {
+  test("навык: заполняем, выбираем тип и добавляем", {
+    annotation: [
+      { type: "req", description: "R3.5" },
+      { type: "req", description: "R6.2" },
+    ],
+  }, async () => {
     const skillTag = `Playwright-demo-${Date.now()}`;
 
     await test.step("Добавляем навык «могу помочь»", async () => {
@@ -114,7 +132,9 @@ test.describe("Профиль: действия с полями", () => {
     });
   });
 
-  test("негатив: пустой навык не добавляется", async () => {
+  test("негатив: пустой навык не добавляется", {
+    annotation: [{ type: "req", description: "R6.6" }],
+  }, async () => {
     await test.step("Поле навыка пустое", async () => {
       await expect(profilePage.skillInput).toHaveValue("");
     });
@@ -124,15 +144,14 @@ test.describe("Профиль: действия с полями", () => {
     });
 
     await test.step("Ни одного навыка не появилось", async () => {
-      // Поле навыка помечено required — браузер не даёт отправить форму.
-      // Проверяем именно результат: чипов ноль и блока «могу помочь» нет,
-      // а не «клик прошёл и ладно».
       await expect(profilePage.skillChips).toHaveCount(0);
       await expect(profilePage.canHelpSkills).toBeHidden();
     });
   });
 
-  test("негатив: навык «хочу разобрать» не попадает в блок «могу помочь»", async () => {
+  test("негатив: навык «хочу разобрать» не попадает в блок «могу помочь»", {
+    annotation: [{ type: "req", description: "R6.1" }],
+  }, async () => {
     const runId = Date.now();
     const canHelpTag = `CanHelp-${runId}`;
     const wantToLearnTag = `WantToLearn-${runId}`;
@@ -156,12 +175,13 @@ test.describe("Профиль: действия с полями", () => {
     await test.step("Навыки разошлись по своим блокам", async () => {
       await expect(profilePage.skillChips).toHaveCount(2);
       await expect(profilePage.canHelpSkills).toContainText(canHelpTag);
-      // Главная проверка теста: второй навык добавлен, но в «могу помочь» его нет.
       await expect(profilePage.canHelpSkills).not.toContainText(wantToLearnTag);
     });
   });
 
-  test("форма профиля: три поля сохраняются за один раз", async () => {
+  test("форма профиля: три поля сохраняются за один раз", {
+    annotation: [{ type: "req", description: "R3.5" }],
+  }, async () => {
     const runId = Date.now();
     const name = `Тимур Тестовый ${runId}`;
     const telegram = `@qa_timur_${runId}`;
@@ -179,8 +199,6 @@ test.describe("Профиль: действия с полями", () => {
     });
 
     await test.step("Все три значения пришли с сервера", async () => {
-      // expect.soft не останавливает тест на первой неудаче: если поедут
-      // два поля из трёх, увидим оба сразу, а не по одному за прогон.
       await expect.soft(profilePage.nameInput).toHaveValue(name);
       await expect.soft(profilePage.telegramInput).toHaveValue(telegram);
       await expect.soft(profilePage.bioInput).toHaveValue(bio);

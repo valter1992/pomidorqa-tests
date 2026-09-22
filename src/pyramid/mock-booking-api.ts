@@ -2,12 +2,10 @@ import http from "node:http";
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 
-// Мини-имитация бизнес-правил бронирования PomidorQA в виде обычного HTTP API.
-
 export interface Slot {
   id: string;
   ownerId: string;
-  startTime: string; // ISO
+  startTime: string;
   status: "free" | "booked";
 }
 
@@ -46,9 +44,6 @@ export class BookingStore {
     return slot;
   }
 
-  /**
-   * Email — уникальный ключ, как и в реальной регистрации PomidorQA через Supabase Auth.
-   */
   registerParticipant(name: string, email: string): Participant {
     if (this.participantsByEmail.has(email)) throw new ApiError(409, "email_taken");
 
@@ -57,11 +52,6 @@ export class BookingStore {
     return participant;
   }
 
-  /**
-   * Очередь на конкретный слот имитирует `FOR UPDATE` из реальной SQL-функции:
-   * второй одновременный вызов на тот же слот дожидается первого и видит уже актуальный статус.
-   * Это гарантирует, что при гонке подтверждённой останется ровно одна бронь.
-   */
   bookSlot(slotId: string, userId: string): Promise<Booking> {
     const previous = this.queues.get(slotId) ?? Promise.resolve();
     const task = previous.then(() => this.doBook(slotId, userId));
@@ -70,8 +60,6 @@ export class BookingStore {
   }
 
   private async doBook(slotId: string, userId: string): Promise<Booking> {
-    // Искусственная задержка — без неё гонка на localhost отрабатывает слишком быстро,
-    // чтобы её можно было поймать.
     await new Promise((resolve) => setTimeout(resolve, 30));
 
     const slot = this.slots.get(slotId);

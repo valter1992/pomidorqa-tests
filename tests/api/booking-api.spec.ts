@@ -18,7 +18,9 @@ test.describe("API: бронирование слота PomidorQA", () => {
     await close();
   });
 
-  test("бронирование свободного слота — 201, статус confirmed", async () => {
+  test("бронирование свободного слота — 201, статус confirmed", {
+    annotation: [{ type: "req", description: "R10.3" }],
+  }, async () => {
     const slot = store.createSlot("user-host", futureIso(60));
 
     const response = await api.post("/bookings", { data: { slotId: slot.id, userId: "user-guest" } });
@@ -30,7 +32,9 @@ test.describe("API: бронирование слота PomidorQA", () => {
     expect(booking.guestId).toBe("user-guest");
   });
 
-  test("нельзя забронировать собственный слот — 409 cannot_book_own_slot", async () => {
+  test("нельзя забронировать собственный слот — 409 cannot_book_own_slot", {
+    annotation: [{ type: "req", description: "R10.1" }],
+  }, async () => {
     const slot = store.createSlot("user-owner", futureIso(60));
 
     const response = await api.post("/bookings", { data: { slotId: slot.id, userId: "user-owner" } });
@@ -39,7 +43,9 @@ test.describe("API: бронирование слота PomidorQA", () => {
     expect((await response.json()).error).toBe("cannot_book_own_slot");
   });
 
-  test("нельзя забронировать слот с датой в прошлом — 409 slot_in_past", async () => {
+  test("нельзя забронировать слот с датой в прошлом — 409 slot_in_past", {
+    annotation: [{ type: "req", description: "R10.2" }],
+  }, async () => {
     const slot = store.createSlot("user-host-2", pastIso(60));
 
     const response = await api.post("/bookings", { data: { slotId: slot.id, userId: "user-guest-2" } });
@@ -55,7 +61,9 @@ test.describe("API: бронирование слота PomidorQA", () => {
     expect((await response.json()).error).toBe("slot_not_found");
   });
 
-  test("повторное бронирование уже занятого слота — 409 slot_already_booked", async () => {
+  test("повторное бронирование уже занятого слота — 409 slot_already_booked", {
+    annotation: [{ type: "req", description: "R10.2" }],
+  }, async () => {
     const slot = store.createSlot("user-host-4", futureIso(60));
     await api.post("/bookings", { data: { slotId: slot.id, userId: "user-guest-4a" } });
 
@@ -65,7 +73,9 @@ test.describe("API: бронирование слота PomidorQA", () => {
     expect((await response.json()).error).toBe("slot_already_booked");
   });
 
-  test("гонка двух одновременных броней на один слот — подтверждена ровно одна", async () => {
+  test("гонка двух одновременных броней на один слот — подтверждена ровно одна", {
+    annotation: [{ type: "req", description: "R10.4" }],
+  }, async () => {
     const slot = store.createSlot("user-host-3", futureIso(60));
 
     const [responseA, responseB] = await Promise.all([
@@ -98,7 +108,9 @@ test.describe("API: регистрация участника PomidorQA", () => 
     await close();
   });
 
-  test("регистрация нового участника — 201, аккаунт создан с переданными данными", async () => {
+  test("регистрация нового участника — 201, аккаунт создан с переданными данными", {
+    annotation: [{ type: "req", description: "R4.1" }],
+  }, async () => {
     const email = `new-participant-${Date.now()}@example.com`;
 
     const response = await api.post("/participants", { data: { name: "Новый Участник", email } });
@@ -110,7 +122,9 @@ test.describe("API: регистрация участника PomidorQA", () => 
     expect(participant.id).toBeTruthy();
   });
 
-  test("повторная регистрация с тем же email — 409 email_taken", async () => {
+  test("повторная регистрация с тем же email — 409 email_taken", {
+    annotation: [{ type: "req", description: "R4.4" }],
+  }, async () => {
     const email = `duplicate-${Date.now()}@example.com`;
     await api.post("/participants", { data: { name: "Первый", email } });
 

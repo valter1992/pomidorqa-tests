@@ -4,15 +4,6 @@ import { addOpenSlot } from "../helpers/host";
 import { ProfilePage } from "../pages/profile-page";
 import { BookingPage } from "../pages/booking-page";
 
-// Поиск в каталоге: участники заводятся через API — тесты проверяют каталог,
-// а не форму регистрации, браузер занят только самим сценарием. beforeEach
-// поднимает пару на каждый тест: хоста (навык «могу помочь» + будущий слот —
-// без слота участник в каталог не попадает) и гостя (своя карточка в каталоге
-// не видна, поэтому все проверки «извне» — от него). afterEach гарантированно
-// удаляет оба аккаунта и закрывает контексты — он выполняется и при падении
-// теста, как finally. Тег навыка уникален, поэтому в выдаче по нему только
-// этот хост.
-
 test.describe("Каталог: поиск по навыку", () => {
   const users = new UserRegistry();
 
@@ -34,9 +25,6 @@ test.describe("Каталог: поиск по навыку", () => {
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const slotDate = tomorrow.toISOString().slice(0, 10);
 
-    // Подготовку проверяем здесь же — каждую часть на своей странице:
-    // если навык или слот молча не сохранились, падение укажет
-    // на подготовку, а не на поиск гостя.
     const hostProfile = new ProfilePage(hostSession.page);
     await hostProfile.open();
     await hostProfile.addSkill(skillTag, "can_help");
@@ -49,7 +37,9 @@ test.describe("Каталог: поиск по навыку", () => {
     await users.cleanup();
   });
 
-  test("по навыку находится участник со свободным слотом", async () => {
+  test("по навыку находится участник со свободным слотом", {
+    annotation: [{ type: "req", description: "R8.3" }],
+  }, async () => {
     await test.step("Гость: открывает каталог", async () => {
       await guestBooking.openCatalog();
     });
@@ -71,16 +61,15 @@ test.describe("Каталог: поиск по навыку", () => {
     });
 
     await test.step("На карточке есть календарь со слотами", async () => {
-      // Календарь догидратируется — даём ему время в самой проверке.
       await expect(guestBooking.calendarDay.first()).toBeVisible({
         timeout: 10_000,
       });
     });
   });
 
-  test("по навыку без совпадений выдача пустая", async () => {
-    // Хост с живым навыком и слотом существует — тест проверяет именно
-    // «по чужому навыку не находит», а не «в каталоге вообще пусто».
+  test("по навыку без совпадений выдача пустая", {
+    annotation: [{ type: "req", description: "R8.4" }],
+  }, async () => {
     const missingTag = uniqueTag("NoSuchSkill");
 
     await test.step("Гость: открывает каталог", async () => {
@@ -100,7 +89,9 @@ test.describe("Каталог: поиск по навыку", () => {
     });
   });
 
-  test("собственная карточка не видна в каталоге", async () => {
+  test("собственная карточка не видна в каталоге", {
+    annotation: [{ type: "req", description: "R8.2" }],
+  }, async () => {
     await test.step("Гость: открывает каталог", async () => {
       await guestBooking.openCatalog();
     });

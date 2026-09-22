@@ -13,7 +13,8 @@
     "test:e2e": "playwright test --project=e2e",
     "lint": "eslint tests src",
     "typecheck": "tsc --noEmit",
-    "report": "playwright show-report"
+    "report": "playwright show-report",
+    "coverage": "npm test && node scripts/test-metrics.mjs playwright-report/results.json --write-matrix"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

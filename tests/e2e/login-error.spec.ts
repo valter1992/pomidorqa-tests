@@ -1,12 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { UserRegistry, logIn } from "../helpers/user";
 
-// Негативный вход: при неверном email ИЛИ пароле участник видит одну и ту же
-// понятную ошибку — без уточнения, что именно неверно, из соображений безопасности.
-// Живой аккаунт для проверки заводится через API: тест проверяет форму входа,
-// а не регистрацию. afterEach удаляет аккаунт и закрывает контекст
-// даже при падении теста.
-
 test.describe("Вход: неверные данные", () => {
   const users = new UserRegistry();
 
@@ -23,7 +17,9 @@ test.describe("Вход: неверные данные", () => {
     await users.cleanup();
   });
 
-  test("вход с неверными данными — одинаковая ошибка в обоих случаях, без уточнения причины", async () => {
+  test("вход с неверными данными — одинаковая ошибка в обоих случаях, без уточнения причины", {
+    annotation: [{ type: "req", description: "R4.5" }],
+  }, async () => {
     let wrongPasswordError = "";
     let unknownEmailError = "";
 
